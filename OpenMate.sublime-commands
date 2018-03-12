@@ -1,0 +1,4 @@
+[
+ { "caption" : "OpenMate: Open file", "command": "open_mate" },
+ { "caption" : "OpenMate: Install command-line tool", "command": "install_open_mate" }
+]

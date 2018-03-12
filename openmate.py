@@ -80,3 +80,16 @@ class OpenMateCommand(sublime_plugin.ApplicationCommand):
 
     def description(self):
         return "Open a file in the right window"
+
+class InstallOpenMateCommand(sublime_plugin.ApplicationCommand):
+    def run(self):
+        win = sublime.active_window()
+        win.show_input_panel("Select installation location", "/usr/local/bin/openmate", self.on_done, None, None)
+
+    def on_done(self, dest):
+        src = os.path.join(os.path.dirname(__file__), 'mate')
+        import shutil
+        shutil.copyfile(src, dest)
+
+    def description(self):
+        """Install openmate executable"""
