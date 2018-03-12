@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Open a file or folder with sublimetext
+
+uses TextMate-like logic for determining which window to use
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+subprocess.check_call(['subl', '--command',
+    'open_mate %s' % json.dumps({
+        'path': os.path.abspath(sys.argv[1]),
+    }),
+])
