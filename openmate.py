@@ -22,12 +22,12 @@ class OpenMateCommand(sublime_plugin.ApplicationCommand):
         window_list.remove(active_window)
         window_list.insert(0, active_window)
 
+        its_a_dir = os.path.isdir(path)
         # first priority, focus already-open view
-        if not os.path.isdir(path):
+        if not its_a_dir:
             for win in window_list:
                 view = win.find_open_file(path)
                 if view:
-                    print("found already open", path)
                     win.focus_view(view)
                     if win is not active_window:
                         self.focus(win)
@@ -37,23 +37,61 @@ class OpenMateCommand(sublime_plugin.ApplicationCommand):
         for win in window_list:
             for folder in win.folders():
                 if (path + os.path.sep).startswith(folder + os.path.sep):
-                    print("found folder for", path)
                     if not os.path.isdir(path):
                         win.open_file(path)
                     if win is not active_window:
                         self.focus(win)
                     return
 
-        # not already open, new window
+        # not already open, open in first no-folder window
+        # open all orphan files
+        if not its_a_dir:
+            folderless_windows = [ w for w in window_list if not w.folders() ]
+            if folderless_windows:
+                win = folderless_windows[0]
+                win.open_file(path)
+                if win is not active_window:
+                    self.focus(win)
+                return
+
+        # no appropriate window found, make a new one
         sublime.run_command("new_window")
         win = sublime.active_window()
-        if os.path.isdir(path):
+        if its_a_dir:
             proj = win.project_data() or {'folders': []}
             dir_path = path
             proj['folders'].append({'path': dir_path})
             win.set_project_data(proj)
         else:
             win.open_file(path)
+
+    def nearby_window_key(self, path, win):
+        """sort-key function for the window with files in the nearest folder"""
+        distance = float('inf')
+        for view in win.views():
+            filename = view.file_name()
+            if filename:
+                distance = min(self.path_distance(path, os.path.dirname(filename)), distance)
+        return distance
+
+    def path_distance(self, a, b):
+        """Return relative path distance for two files
+
+        For ranking nearby files
+        """
+
+        a_parts = a.split(os.path.sep)
+        b_parts = b.split(os.path.sep)
+        if len(a_parts) > len(b_parts):
+            # force a to be shorter
+            # since the results are symmetrical
+            a_parts, b_parts = b_parts, a_parts
+        for prefix_len in range(len(a_parts) + 1):
+            if a_parts[:prefix_len + 1] != b_parts[:prefix_len + 1]:
+                break
+
+        return len(a_parts) + len(b_parts) - (2 * prefix_len)
+
 
     # window-focus logic from https://github.com/ccampbell/sublime-goto-window
 
