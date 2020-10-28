@@ -9,13 +9,22 @@ import os
 import subprocess
 import sys
 
+
 def main():
-    subprocess.check_call(['subl', '--command',
-    'open_mate %s' % json.dumps({
-        'path': os.path.abspath(sys.argv[1]),
-    }),
-])
+    for path in sys.argv[1:]:
+        subprocess.check_call(
+            [
+                "subl",
+                "--command",
+                "open_mate %s"
+                % json.dumps(
+                    {
+                        "path": os.path.abspath(path),
+                    }
+                ),
+            ]
+        )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
-
