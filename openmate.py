@@ -15,19 +15,56 @@ import sublime_plugin
 
 package_settings = sublime.load_settings("OpenMate.sublime-settings")
 single_orphan_window = package_settings.get("single-orphan-window", False)
+orphan_sibling_opens_folder = package_settings.get("orphan-sibling-opens-folder", True)
+never_implicitly_open_folders = package_settings.get(
+    "never-implicitly-open-folders",
+    [
+        "~",
+        "/",
+        "/etc",
+        "/tmp",
+        "/usr",
+        "/usr/local",
+    ],
+)
 
 
 class OpenMateCommand(sublime_plugin.ApplicationCommand):
     """Open a file or folder in an existing window if it is already open"""
 
     def run(self, path):
-        # prioritize current window
-        window_list = sublime.windows()
-        active_window = sublime.active_window()
-        window_list.remove(active_window)
-        window_list.insert(0, active_window)
-
+        path = path.rstrip(os.path.sep)
+        parent_path = os.path.dirname(path)
         its_a_dir = os.path.isdir(path)
+        # when considering a directory,
+        # use the directory itself when given a path to a dir
+        # or the parent when it's a file
+        if its_a_dir:
+            dir_path = path
+        else:
+            dir_path = parent_path
+
+        avoid_implicit_folders = set(
+            [os.path.expanduser(p) for p in never_implicitly_open_folders]
+        )
+
+        # window priority
+        # 0: current window
+        # 1: project window with open folders
+        # 2: orphan-file window
+        active_window = sublime.active_window()
+        active_id = active_window.id()
+
+        def sort_key(win):
+            if win.id() == active_id:
+                return 0
+            if win.folders():
+                return 1
+            else:
+                return 2
+
+        window_list = sorted(sublime.windows(), key=sort_key)
+
         # first priority, focus already-open view
         if not its_a_dir:
             for win in window_list:
@@ -40,15 +77,80 @@ class OpenMateCommand(sublime_plugin.ApplicationCommand):
 
         # second priority, existing window with folder open
         for win in window_list:
-            for folder in win.folders():
-                if (path + os.path.sep).startswith(folder + os.path.sep):
-                    if not os.path.isdir(path):
-                        # create file
-                        if not os.path.exists(path):
-                            with open(path, "a"):
-                                pass
+            folders = win.folders()
+            if folders:
+                has_folders = True
+            elif not single_orphan_window:
+                # no-folder view
+                # when looking for a directory match for single-files,
+                # consider folder-less windows a match
+                # if they have an open file in the same folder
+                has_folders = False
+                folders = set()
+                for view in win.views():
+                    folders.add(os.path.dirname(view.file_name()))
+                folders = sorted(folders)
+
+            for folder in folders:
+                if (
+                    (
+                        # it's a folder-having window, use prefix-match
+                        # to find files in any sub-directory
+                        has_folders
+                        and (path + os.path.sep).startswith(folder + os.path.sep)
+                    )
+                    or (
+                        # it's an orphan-file window and we've been asked to open a directory
+                        # consider any open file in a subdirectory to be a match
+                        # (reverse of above, preserves same behavior for `mate foo/x` `mate x` regardless of order)
+                        (not has_folders)  # should we do this only for orphan files, or also sub-directories?
+                        and its_a_dir
+                        and (folder + os.path.sep).startswith(dir_path + os.path.sep)
+                    )
+                    or (
+                        # it's an orphan-file window and we've been asked to open a file
+                        # open two siblings in an adjacent folder
+                        (not has_folders)
+                        and not its_a_dir
+                        and folder == dir_path
+                    )
+                ):
+                    # found a matching window
+                    # focus file and/or folder
+                    # open view for file
+                    # opening two siblings as orphans opens shared parent folder
+                    # opening parent of orphan re-uses window (same for file then folder as folder then file)
+                    if not its_a_dir:
+                        # single-file
+
+                        # create file if it doesn't exist?
+                        # if not os.path.exists(path):
+                        #     with open(path, "a"):
+                        #         pass
+
+                        if (
+                            not has_folders
+                            and orphan_sibling_opens_folder
+                            # never implicitly open a project for big/common directories
+                            and parent_path not in avoid_implicit_folders
+                        ):
+                            # window has no folder view,
+                            # but has an open file in the same folder.
+                            # add parent folder to the window
+                            proj = win.project_data() or {"folders": []}
+                            proj["folders"].append({"path": parent_path})
+                            win.set_project_data(proj)
                         win.open_file(path)
                         win.run_command("reveal_in_side_bar")
+                    elif (not has_folders) or path not in folders:
+                        # requested opening of parent directory when a file
+                        # within the
+                        # window has no folder view,
+                        # but has an open file in our folder.
+                        # add our folder to the window and finish
+                        proj = win.project_data() or {"folders": []}
+                        proj["folders"].append({"path": path})
+                        win.set_project_data(proj)
                     else:
                         # it's a directory. No way to reveal a folder in side bar,
                         # so reveal the first file in the side bar
