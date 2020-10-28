@@ -44,8 +44,9 @@ class OpenMateCommand(sublime_plugin.ApplicationCommand):
                 if (path + os.path.sep).startswith(folder + os.path.sep):
                     if not os.path.isdir(path):
                         # create file
-                        with open(path, "w"):
-                            pass
+                        if not os.path.exists(path):
+                            with open(path, "a"):
+                                pass
                         win.open_file(path)
                         win.run_command("reveal_in_side_bar")
                     else:
